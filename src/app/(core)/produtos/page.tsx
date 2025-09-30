@@ -1,23 +1,59 @@
-export const dynamic = "force-dynamic";
+"use client";
 
-import { db, schema } from "@/server/db";
+import React from "react";
+import useSWR from "swr";
+
+type Produto = { id: number; sku: string; nome: string; unidade: string };
+
+const fetcher = (url: string) =>
+  fetch(url).then((res) => {
+    if (!res.ok) throw new Error("Erro na requisição");
+    return res.json();
+  });
 
 export default function ProdutosPage() {
-  const produtos = db.select().from(schema.produtos).all();
+  const { data: produtos, error, mutate } = useSWR<Produto[]>("/api/produtos", fetcher);
+
+  async function handleDelete(id: number) {
+    if (!confirm("Deseja realmente excluir este produto?")) return;
+    const res = await fetch(`/api/produtos/${id}`, { method: "DELETE" });
+    if (res.ok) mutate();
+    else alert("Erro ao excluir produto");
+  }
+
+  if (error) return <div className="p-4">Erro: {String(error.message)}</div>;
+  if (!produtos) return <div className="p-4">Carregando...</div>;
 
   return (
-    <main className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Produtos</h1>
-      <ul className="space-y-2">
-        {produtos.map((p) => (
-          <li key={p.id} className="rounded border p-3">
-            <div className="font-medium">{p.nome}</div>
-            <div className="text-sm text-gray-500">
-              SKU: {p.sku} • UN: {p.unidade}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </main>
+    <div className="p-4">
+      <h1 className="text-xl font-bold mb-4">Produtos</h1>
+      <table className="table-auto w-full border">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="p-2 text-left">SKU</th>
+            <th className="p-2 text-left">Nome</th>
+            <th className="p-2 text-left">Unidade</th>
+            <th className="p-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {produtos.map((p) => (
+            <tr key={p.id} className="border-t">
+              <td className="p-2">{p.sku}</td>
+              <td className="p-2">{p.nome}</td>
+              <td className="p-2">{p.unidade}</td>
+              <td className="p-2 text-right">
+                <button
+                  onClick={() => handleDelete(p.id)}
+                  className="text-red-500 hover:underline"
+                >
+                  Excluir
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

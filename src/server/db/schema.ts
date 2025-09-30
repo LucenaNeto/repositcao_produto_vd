@@ -7,6 +7,7 @@ export const produtos = sqliteTable("produtos", {
   nome: text("nome").notNull(),
   unidade: text("unidade").notNull().default("UN"),
   criadoEm: text("criado_em").notNull().default(sql`CURRENT_TIMESTAMP`),
+  // ainda vou implmentar atualizado em 
 });
 
 export const consultoras = sqliteTable("consultoras", {
