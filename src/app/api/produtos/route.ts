@@ -37,7 +37,13 @@ export async function POST(req: Request) {
     const [row] = await db.insert(schema.produtos).values(data).returning();
     return Response.json(row, { status: 201 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    let msg = err instanceof Error ? err.message : String(err);
+
+    // Trata erro de UNIQUE constraint (SKU duplicado)
+    if (msg.includes("UNIQUE constraint failed")) {
+      msg = "Já existe um produto com esse SKU.";
+    }
+
     return new Response(JSON.stringify({ error: msg }), { status: 400 });
   }
 }

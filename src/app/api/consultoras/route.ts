@@ -39,12 +39,17 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const payload = ConsultoraCreateSchema.parse(await req.json());
-    // insere e retorna a linha criada
     const [row] = await db.insert(schema.consultoras).values(payload).returning();
     return Response.json(row, { status: 201 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // 400 para erro de validação / entrada; 500 se quiser diferenciar erros internos
+    let msg = err instanceof Error ? err.message : String(err);
+
+    // Trata erro de UNIQUE constraint
+    if (msg.includes("UNIQUE constraint failed")) {
+      msg = "Já existe uma consultora com esse código.";
+    }
+
     return new Response(JSON.stringify({ error: msg }), { status: 400 });
   }
 }
+
