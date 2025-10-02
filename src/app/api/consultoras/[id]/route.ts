@@ -31,10 +31,17 @@ export async function PATCH(
 
     return Response.json(row);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    let msg = err instanceof Error ? err.message : String(err);
+
+    // Trata erro de UNIQUE constraint (código duplicado)
+    if (msg.includes("UNIQUE constraint failed")) {
+      msg = "Já existe uma consultora com esse código.";
+    }
+
     return new Response(JSON.stringify({ error: msg }), { status: 400 });
   }
 }
+
 
 // DELETE /api/consultoras/:id
 export async function DELETE(

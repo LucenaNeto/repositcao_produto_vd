@@ -31,7 +31,13 @@ export async function PATCH(
 
     return Response.json(row);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    let msg = err instanceof Error ? err.message : String(err);
+
+    // Trata erro de UNIQUE constraint (SKU duplicado)
+    if (msg.includes("UNIQUE constraint failed")) {
+      msg = "Já existe um produto com esse SKU.";
+    }
+
     return new Response(JSON.stringify({ error: msg }), { status: 400 });
   }
 }
