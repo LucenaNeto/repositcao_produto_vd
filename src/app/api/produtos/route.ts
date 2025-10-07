@@ -1,5 +1,5 @@
 import { db, schema } from "@/server/db";
-import { like } from "drizzle-orm";
+import { like, eq } from "drizzle-orm";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -34,8 +34,18 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const data = ProdutoSchema.parse(await req.json());
-    const [row] = await db.insert(schema.produtos).values(data).returning();
-    return Response.json(row, { status: 201 });
+
+    // Cria o produto
+    const [produto] = await db.insert(schema.produtos).values(data).returning();
+
+    // Cria estoque zerado automaticamente
+    await db.insert(schema.estoques).values({
+      produtoId: produto.id,
+      quantidade: 0,
+      reservado: 0,
+    });
+
+    return Response.json(produto, { status: 201 });
   } catch (err) {
     let msg = err instanceof Error ? err.message : String(err);
 

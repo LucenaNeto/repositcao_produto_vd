@@ -11,8 +11,10 @@ export async function GET() {
       produtoId: schema.produtos.id,
       sku: schema.produtos.sku,
       nome: schema.produtos.nome,
+      estoqueId: schema.estoques.id,
       quantidade: schema.estoques.quantidade,
       reservado: schema.estoques.reservado,
+      atualizadoEm: schema.estoques.atualizadoEm,
     })
     .from(schema.produtos)
     .leftJoin(
@@ -21,10 +23,14 @@ export async function GET() {
     )
     .all()
     .map((r) => ({
-      ...r,
+      produtoId: r.produtoId,
+      sku: r.sku,
+      nome: r.nome,
+      estoqueId: r.estoqueId ?? null,
       quantidade: r.quantidade ?? 0,
       reservado: r.reservado ?? 0,
       disponivel: (r.quantidade ?? 0) - (r.reservado ?? 0),
+      atualizadoEm: r.atualizadoEm ?? null,
     }));
 
   return NextResponse.json(rows);

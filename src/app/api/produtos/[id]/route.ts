@@ -41,7 +41,6 @@ export async function PATCH(
     return new Response(JSON.stringify({ error: msg }), { status: 400 });
   }
 }
-
 // DELETE /api/produtos/:id
 export async function DELETE(
   req: Request,
