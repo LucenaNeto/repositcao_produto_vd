@@ -1,10 +1,9 @@
-// src/app/api/solicitacoes/[id]/concluir/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { db, schema } from "@/server/db";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getTokenFromHeader } from "@/lib/getTokenFromHeader";
 import { verificarPapel } from "@/lib/auth";
 
@@ -12,9 +11,9 @@ type Params = { id: string };
 
 export async function PATCH(req: Request, { params }: { params: Params }) {
   try {
-    // 1) Autorização
+    // 1) Autorização: admin, estoque OU solicitante (MVP simples)
     const token = getTokenFromHeader(req);
-    const usuario = verificarPapel(token, ["admin", "estoque"]);
+    verificarPapel(token, ["admin", "estoque", "solicitante"]);
 
     // 2) Validação do ID
     const id = Number(params.id);
@@ -22,7 +21,7 @@ export async function PATCH(req: Request, { params }: { params: Params }) {
       return NextResponse.json({ error: "ID inválido" }, { status: 400 });
     }
 
-    // 3) Transação SINCRONA (nada de async/await aqui dentro)
+    // 3) Transação SINCRONA (sem async/await dentro)
     db.transaction((tx) => {
       // 3.1) Cabeçalho
       const cab = tx
@@ -32,7 +31,7 @@ export async function PATCH(req: Request, { params }: { params: Params }) {
         .get();
 
       if (!cab) throw new Error("Solicitação não encontrada");
-      if (cab.status !== "aberta") throw new Error("Solicitação não está aberta");
+      if (cab.status !== "aberta") throw new Error("Apenas solicitações abertas podem ser canceladas");
 
       // 3.2) Itens da solicitação
       const itens = tx
@@ -44,60 +43,48 @@ export async function PATCH(req: Request, { params }: { params: Params }) {
         .where(eq(schema.solicitacaoItens.solicitacaoId, id))
         .all();
 
-      if (itens.length === 0) throw new Error("Solicitação sem itens");
-
-      // 3.3) Para cada item: garante estoque, dá baixa e registra movimentação
+      // 3.3) Libera reserva em estoque para cada item
       for (const it of itens) {
-        // cria o registro de estoque se não existir
-        const estoqueRow = tx
+        // Garante que exista registro de estoque (defensivo)
+        const row = tx
           .select()
           .from(schema.estoques)
           .where(eq(schema.estoques.produtoId, it.produtoId))
           .get();
 
-        if (!estoqueRow) {
+        if (!row) {
+          // se não existir, cria com zeros (para não quebrar)
           tx.insert(schema.estoques)
-            .values({
-              produtoId: it.produtoId,
-              quantidade: 0,
-              reservado: 0,
-            })
+            .values({ produtoId: it.produtoId, quantidade: 0, reservado: 0 })
             .run();
         }
 
-        // baixa: quantidade -= qtd, reservado -= qtd
+        // reservado -= quantidade (nunca negativo: opcional no MVP)
         tx.update(schema.estoques)
           .set({
-            quantidade: sql`${schema.estoques.quantidade} - ${it.quantidade}`,
             reservado: sql`${schema.estoques.reservado} - ${it.quantidade}`,
             atualizadoEm: sql`CURRENT_TIMESTAMP`,
           })
           .where(eq(schema.estoques.produtoId, it.produtoId))
           .run();
-
-        // movimentação: SAÍDA
-        tx.insert(schema.movimentacoesEstoque)
-          .values({
-            produtoId: it.produtoId,
-            tipo: "saida",
-            quantidade: it.quantidade,
-            solicitacaoId: id,
-            usuario: usuario.nome ?? "Sistema",
-          })
-          .run();
       }
 
-      // 3.4) Marca a solicitação como finalizada
+      // 3.4) Remove as reservas dessa solicitação (liberação total)
+      tx.delete(schema.reservas)
+        .where(eq(schema.reservas.solicitacaoId, id))
+        .run();
+
+      // 3.5) Marca a solicitação como cancelada
       tx.update(schema.solicitacoes)
-        .set({ status: "finalizada" })
+        .set({ status: "cancelada" })
         .where(eq(schema.solicitacoes.id, id))
         .run();
     });
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    const msg = err?.message || "Erro ao concluir solicitação";
-    const status = /não encontrada|sem itens|aberta/.test(msg) ? 400 : 500;
+    const msg = err?.message || "Erro ao cancelar solicitação";
+    const status = /não encontrada|Apenas solicitações abertas/.test(msg) ? 400 : 500;
     return NextResponse.json({ error: msg }, { status });
   }
 }

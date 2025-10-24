@@ -64,12 +64,22 @@ export const reservas = sqliteTable("reservas", {
 // Ledger de entradas/saídas
 export const movimentacoesEstoque = sqliteTable("movimentacoes_estoque", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  produtoId: integer("produto_id")
+  produtoId: integer("produto_id").notNull().references(() => produtos.id),
+  tipo: text("tipo").notNull(), // "entrada" ou "saida"
+  quantidade: integer("quantidade").notNull(),
+  solicitacaoId: integer("solicitacao_id"),
+  criadoEm: text("criado_em").default(sql`CURRENT_TIMESTAMP`),
+  usuario: text("usuario").notNull().default("Sistema"), // <-- ADICIONE ESTA LINHA
+});
+
+
+export const usuarios = sqliteTable("usuarios", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  nome: text("nome").notNull(),
+  email: text("email").notNull().unique(),
+  senha: text("senha").notNull(),
+  papel: text("papel").notNull(),
+  criadoEm: text("criado_em")
     .notNull()
-    .references(() => produtos.id, { onDelete: "restrict" }),
-  tipo: text("tipo").notNull(), // 'entrada' | 'saida'
-  quantidade: integer("quantidade").notNull(), // use positivo; sinal é pelo tipo
-  solicitacaoId: integer("solicitacao_id")
-    .references(() => solicitacoes.id, { onDelete: "set null" }),
-  criadoEm: text("criado_em").notNull().default(sql`CURRENT_TIMESTAMP`),
+    .default(sql`(CURRENT_TIMESTAMP)`), // 
 });

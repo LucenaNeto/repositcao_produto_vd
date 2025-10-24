@@ -1,36 +1,17 @@
-export const dynamic = "force-dynamic";
+// src/components/SolicitacoesList.tsx
+"use client";
 
 import Link from "next/link";
-import { db, schema } from "@/server/db";
-import { eq, sql } from "drizzle-orm";
 
-export default function SolicitacoesPage() {
-  const rows = db
-    .select({
-      id: schema.solicitacoes.id,
-      criadoEm: schema.solicitacoes.criadoEm,
-      status: schema.solicitacoes.status,
-      consultora: schema.consultoras.nome,
-      itens: sql<number>`count(${schema.solicitacaoItens.id})`,
-    })
-    .from(schema.solicitacoes)
-    .leftJoin(
-      schema.consultoras,
-      eq(schema.solicitacoes.consultoraId, schema.consultoras.id)
-    )
-    .leftJoin(
-      schema.solicitacaoItens,
-      eq(schema.solicitacoes.id, schema.solicitacaoItens.solicitacaoId)
-    )
-    .groupBy(
-      schema.solicitacoes.id,
-      schema.solicitacoes.criadoEm,
-      schema.solicitacoes.status,
-      schema.consultoras.nome
-    )
-    .all()
-    .sort((a, b) => b.id - a.id);
+type Row = {
+  id: number;
+  criadoEm: string | null;
+  status: string | null;
+  consultora: string | null;
+  itens: number;
+};
 
+export default function SolicitacoesList({ rows }: { rows: Row[] }) {
   return (
     <main className="max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between mb-4">
@@ -61,7 +42,7 @@ export default function SolicitacoesPage() {
                 <td className="p-2">
                   <span className="rounded px-2 py-1 bg-gray-100">{r.status}</span>
                 </td>
-                <td className="p-2">{r.criadoEm}</td>
+                <td className="p-2">{r.criadoEm ?? "-"}</td>
                 <td className="p-2">
                   <Link href={`/solicitacoes/${r.id}`} className="underline">
                     Abrir

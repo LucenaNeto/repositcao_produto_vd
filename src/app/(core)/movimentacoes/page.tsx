@@ -8,9 +8,10 @@ type Movimentacao = {
   id: number;
   criadoEm: string;
   produto: string | null;
-  tipo: "entrada" | "saida" | null;
+  tipo: string | null;
   quantidade: number;
   solicitacaoId: number | null;
+  usuario: string | null;
 };
 
 const fetcher = (url: string): Promise<Movimentacao[]> =>
@@ -24,13 +25,12 @@ export default function MovimentacoesPage() {
   const [filtroSolicitacao, setFiltroSolicitacao] = useState("");
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
-
   const [pagina, setPagina] = useState(1);
+
   const itensPorPagina = 10;
 
-  // Filtro
   const filtradas = useMemo(() => {
-    if (!movimentacoes) return [];
+    if (!Array.isArray(movimentacoes)) return [];
 
     return movimentacoes.filter((m) => {
       const matchProduto =
@@ -62,7 +62,6 @@ export default function MovimentacoesPage() {
     dataFim,
   ]);
 
-  // Resumo
   const resumo = useMemo(() => {
     const entradas = filtradas
       .filter((m) => m.tipo === "entrada")
@@ -72,15 +71,12 @@ export default function MovimentacoesPage() {
       .filter((m) => m.tipo === "saida")
       .reduce((acc, m) => acc + m.quantidade, 0);
 
-    const saldo = entradas - saidas;
-
-    return { entradas, saidas, saldo };
+    return { entradas, saidas, saldo: entradas - saidas };
   }, [filtradas]);
 
   if (error) return <div>Erro ao carregar movimentações.</div>;
   if (!movimentacoes) return <div>Carregando...</div>;
 
-  // Paginação
   const totalPaginas = Math.ceil(filtradas.length / itensPorPagina);
   const inicioPaginacao = (pagina - 1) * itensPorPagina;
   const paginadas = filtradas.slice(
@@ -88,16 +84,16 @@ export default function MovimentacoesPage() {
     inicioPaginacao + itensPorPagina
   );
 
-  // Exportações
   const exportarCSV = () => {
     const csv = [
-      ["Data", "Produto", "Tipo", "Quantidade", "Solicitação"],
-      ...movimentacoes.map((m) => [
+      ["Data", "Produto", "Tipo", "Quantidade", "Solicitação", "Responsável"],
+      ...filtradas.map((m) => [
         m.criadoEm,
         m.produto ?? "—",
         m.tipo ?? "—",
         m.quantidade,
         m.solicitacaoId ? `#${m.solicitacaoId}` : "-",
+        m.usuario ?? "—",
       ]),
     ]
       .map((row) => row.join(","))
@@ -112,12 +108,13 @@ export default function MovimentacoesPage() {
 
   const exportarExcel = () => {
     const ws = XLSX.utils.json_to_sheet(
-      movimentacoes.map((m) => ({
+      filtradas.map((m) => ({
         Data: m.criadoEm,
         Produto: m.produto ?? "—",
         Tipo: m.tipo ?? "—",
         Quantidade: m.quantidade,
         Solicitação: m.solicitacaoId ? `#${m.solicitacaoId}` : "-",
+        Responsável: m.usuario ?? "—",
       }))
     );
     const wb = XLSX.utils.book_new();
@@ -125,7 +122,6 @@ export default function MovimentacoesPage() {
     XLSX.writeFile(wb, "movimentacoes.xlsx");
   };
 
-  // ===================== JSX =====================
   return (
     <div className="p-6">
       <h1 className="text-xl font-bold mb-4">📦 Movimentações de Estoque</h1>
@@ -169,7 +165,7 @@ export default function MovimentacoesPage() {
         />
       </div>
 
-      {/* Exportação */}
+      {/* Botões de exportação */}
       <div className="flex gap-3 mb-4">
         <button
           onClick={exportarExcel}
@@ -187,25 +183,10 @@ export default function MovimentacoesPage() {
 
       {/* Resumo */}
       <div className="flex flex-wrap gap-6 mb-4 text-lg font-semibold">
-        <div className="text-green-700">
-          🟢 Entradas: <span className="text-green-800">{resumo.entradas}</span>
-        </div>
-        <div className="text-red-700">
-          🔴 Saídas: <span className="text-red-800">{resumo.saidas}</span>
-        </div>
-        <div
-          className={`${
-            resumo.saldo >= 0 ? "text-green-700" : "text-red-700"
-          }`}
-        >
-          ⚖️ Saldo:{" "}
-          <span
-            className={`font-bold ${
-              resumo.saldo >= 0 ? "text-green-800" : "text-red-800"
-            }`}
-          >
-            {resumo.saldo}
-          </span>
+        <div className="text-green-700">🟢 Entradas: {resumo.entradas}</div>
+        <div className="text-red-700">🔴 Saídas: {resumo.saidas}</div>
+        <div className={resumo.saldo >= 0 ? "text-green-700" : "text-red-700"}>
+          ⚖️ Saldo: {resumo.saldo}
         </div>
       </div>
 
@@ -218,6 +199,7 @@ export default function MovimentacoesPage() {
             <th className="p-2 border">Tipo</th>
             <th className="p-2 border">Quantidade</th>
             <th className="p-2 border">Solicitação</th>
+            <th className="p-2 border">Responsável</th>
           </tr>
         </thead>
         <tbody>
@@ -234,12 +216,13 @@ export default function MovimentacoesPage() {
                     : "text-gray-500"
                 }`}
               >
-                {m.tipo ? m.tipo.toUpperCase() : "N/A"}
+                {m.tipo ? m.tipo.toUpperCase() : "—"}
               </td>
               <td className="p-2 border text-right">{m.quantidade}</td>
               <td className="p-2 border text-center">
-                {m.solicitacaoId ? `#${m.solicitacaoId}` : "-"}
+                {m.solicitacaoId ? `#${m.solicitacaoId}` : "—"}
               </td>
+              <td className="p-2 border text-center">{m.usuario ?? "—"}</td>
             </tr>
           ))}
         </tbody>
@@ -255,7 +238,7 @@ export default function MovimentacoesPage() {
           ← Anterior
         </button>
         <span>
-          Página {pagina} de {totalPaginas}
+          Página {pagina} de {totalPaginas || 1}
         </span>
         <button
           disabled={pagina === totalPaginas}

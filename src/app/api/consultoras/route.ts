@@ -3,6 +3,7 @@ import { db, schema } from "@/server/db";
 import { like, or } from "drizzle-orm";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
 export const runtime = "nodejs"; // necessário quando a rota usa better-sqlite3 (drizzle)
 
 const ConsultoraCreateSchema = z.object({

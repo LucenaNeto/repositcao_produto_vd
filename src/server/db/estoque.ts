@@ -1,8 +1,10 @@
 import { db, schema } from "./index";
 import { eq } from "drizzle-orm";
 
-// Aceita db ou tx
+// Aceita db ou tx (transação)
 type DBLike = any;
+
+// --- FUNÇÕES BASE ---
 
 export function ensureEstoque(produtoId: number, cx?: DBLike) {
   const tx = cx ?? db;
@@ -13,9 +15,15 @@ export function ensureEstoque(produtoId: number, cx?: DBLike) {
     .get();
 
   if (!row) {
-    tx.insert(schema.estoques)
-      .values({ produtoId, quantidade: 0, reservado: 0 })
-      .run();
+    tx.insert(schema.estoques).values({
+      produtoId,
+      quantidade: 0,
+      reservado: 0,
+    }).run?.() ?? tx.insert(schema.estoques).values({
+      produtoId,
+      quantidade: 0,
+      reservado: 0,
+    });
   }
 }
 
@@ -26,6 +34,7 @@ export function getSaldo(produtoId: number, cx?: DBLike): number {
     .from(schema.estoques)
     .where(eq(schema.estoques.produtoId, produtoId))
     .get();
+
   return row?.quantidade ?? 0;
 }
 
@@ -36,6 +45,7 @@ export function getReservado(produtoId: number, cx?: DBLike): number {
     .from(schema.estoques)
     .where(eq(schema.estoques.produtoId, produtoId))
     .get();
+
   return row?.reservado ?? 0;
 }
 
@@ -44,65 +54,89 @@ export function getDisponivel(produtoId: number, cx?: DBLike): number {
   return getSaldo(produtoId, tx) - getReservado(produtoId, tx);
 }
 
-export function entrada(produtoId: number, qtd: number, cx?: DBLike) {
+// --- MOVIMENTAÇÕES ---
+
+export async function entrada(
+  produtoId: number,
+  qtd: number,
+  usuarioNome?: string,  
+  cx?: DBLike
+) {
   const tx = cx ?? db;
   if (!(qtd > 0)) throw new Error("Quantidade de entrada inválida");
-  ensureEstoque(produtoId, tx);
 
-  const saldoAtual = getSaldo(produtoId, tx);
-  tx.update(schema.estoques)
+  await ensureEstoque(produtoId, tx);
+  const saldoAtual = await getSaldo(produtoId, tx);
+
+  await tx
+    .update(schema.estoques)
     .set({ quantidade: saldoAtual + qtd })
-    .where(eq(schema.estoques.produtoId, produtoId))
-    .run();
+    .where(eq(schema.estoques.produtoId, produtoId));
 
-  tx.insert(schema.movimentacoesEstoque)
-    .values({ produtoId, tipo: "entrada", quantidade: qtd })
-    .run();
+ 
+  await tx.insert(schema.movimentacoesEstoque).values({
+    produtoId,
+    tipo: "entrada",
+    quantidade: qtd,
+    usuario: usuarioNome ?? "Sistema",
+  });
 }
 
-export function saida(produtoId: number, qtd: number, solicitacaoId: number, cx?: DBLike) {
+export async function saida(
+  produtoId: number,
+  qtd: number,
+  solicitacaoId: number,
+  usuarioNome?: string,   
+  cx?: DBLike
+) {
   const tx = cx ?? db;
   if (!(qtd > 0)) throw new Error("Quantidade de saída inválida");
-  ensureEstoque(produtoId, tx);
-  const saldo = getSaldo(produtoId, tx);
+
+  await ensureEstoque(produtoId, tx);
+  const saldo = await getSaldo(produtoId, tx);
   if (saldo < qtd) throw new Error("Saldo insuficiente");
 
-  tx.update(schema.estoques)
+  await tx
+    .update(schema.estoques)
     .set({ quantidade: saldo - qtd })
-    .where(eq(schema.estoques.produtoId, produtoId))
-    .run();
+    .where(eq(schema.estoques.produtoId, produtoId));
 
-  tx.insert(schema.movimentacoesEstoque)
-    .values({ produtoId, tipo: "saida", quantidade: qtd, solicitacaoId })
-    .run();
+  await tx.insert(schema.movimentacoesEstoque).values({
+    produtoId,
+    tipo: "saida",
+    quantidade: qtd,
+    solicitacaoId,
+    usuario: usuarioNome ?? "Sistema",
+  });
 }
 
 // --- RESERVAS ---
 
-// cria reserva (aumenta reservado) validando disponibilidade
 export function reservar(produtoId: number, qtd: number, solicitacaoId: number, cx?: DBLike) {
   const tx = cx ?? db;
   if (!(qtd > 0)) throw new Error("Quantidade de reserva inválida");
-  ensureEstoque(produtoId, tx);
 
+  ensureEstoque(produtoId, tx);
   const disponivel = getDisponivel(produtoId, tx);
   if (disponivel < qtd) throw new Error("Saldo indisponível para reservar");
 
   const reservadoAtual = getReservado(produtoId, tx);
+
   tx.update(schema.estoques)
     .set({ reservado: reservadoAtual + qtd })
     .where(eq(schema.estoques.produtoId, produtoId))
-    .run();
+    .run?.() ?? tx.update(schema.estoques)
+    .set({ reservado: reservadoAtual + qtd })
+    .where(eq(schema.estoques.produtoId, produtoId));
 
   tx.insert(schema.reservas)
     .values({ solicitacaoId, produtoId, quantidade: qtd })
-    .run();
+    .run?.() ?? tx.insert(schema.reservas)
+    .values({ solicitacaoId, produtoId, quantidade: qtd });
 }
 
-// libera TODAS as reservas dessa solicitação (reduz reservado)
 export function liberarReservasPorSolicitacao(solicitacaoId: number, cx?: DBLike) {
   const tx = cx ?? db;
-
   const rows = tx
     .select()
     .from(schema.reservas)
@@ -114,10 +148,13 @@ export function liberarReservasPorSolicitacao(solicitacaoId: number, cx?: DBLike
     tx.update(schema.estoques)
       .set({ reservado: Math.max(0, atual - r.quantidade) })
       .where(eq(schema.estoques.produtoId, r.produtoId))
-      .run();
+      .run?.() ?? tx.update(schema.estoques)
+      .set({ reservado: Math.max(0, atual - r.quantidade) })
+      .where(eq(schema.estoques.produtoId, r.produtoId));
   }
 
   tx.delete(schema.reservas)
     .where(eq(schema.reservas.solicitacaoId, solicitacaoId))
-    .run();
+    .run?.() ?? tx.delete(schema.reservas)
+    .where(eq(schema.reservas.solicitacaoId, solicitacaoId));
 }
